@@ -1,0 +1,42 @@
+# recycled files
+/lost+found
+
+# system dirs populated at runtime
+/dev/*
+/proc/*
+/sys/*
+/tmp/*
+/var/tmp/*
+/run/*
+/mnt/*
+/media/*
+
+# package caches
+/var/cache/PackageKit
+/var/cache/apk
+/var/cache/apt
+/var/cache/pacman
+/var/cache/zypp
+
+# container image/fs data
+/var/lib/docker/*
+/var/lib/containers/*
+
+# snap
+/snap/*
+
+# keep log files, ignore logs compressed
+/var/log/*.log.*.gz
+/var/log/**/*.log.*.gz
+
+# user temporary/cache files
+/**/.ansible
+/**/.ansible_async
+/**/.cache
+/**/.local/share/Trash/*
+/**/.local/share/containers/
+/**/.thumbnails/*
+
+# removable storage(s)
+/storage/*
+/removable/*

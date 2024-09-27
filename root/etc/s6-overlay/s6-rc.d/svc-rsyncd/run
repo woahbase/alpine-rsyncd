@@ -1,0 +1,23 @@
+#!/usr/bin/with-contenv bash
+set -e
+
+RSYNCD_CONFDIR="${RSYNCD_CONFDIR:-/etc/rsyncd}";
+RSYNCD_ARGS="${RSYNCD_ARGS:- --daemon --no-detach}";
+
+RSYNCD_USER="${RSYNCD_USER:-root}"; # must be a user existing in the system
+
+if [ "${RSYNCD_USER}" = "root" ];
+then
+    exec \
+        /usr/bin/rsync \
+        --config=${RSYNCD_CONFDIR}/rsyncd.conf \
+        ${RSYNCD_ARGS} \
+    ;
+else
+    s6-setuidgid ${RSYNCD_USER:-alpine} \
+    exec \
+        /usr/bin/rsync \
+        --config=${RSYNCD_CONFDIR}/rsyncd.conf \
+        ${RSYNCD_ARGS} \
+    ;
+fi

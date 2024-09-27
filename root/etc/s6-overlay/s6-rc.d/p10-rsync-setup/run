@@ -1,0 +1,98 @@
+#!/usr/bin/with-contenv bash
+set -e
+
+vecho () { if [ "${S6_VERBOSITY:-1}" -gt 0 ]; then echo "[$0] $@"; fi; }
+
+RSYNCD_CONFDIR="${RSYNCD_CONFDIR:-/etc/rsyncd}";
+RSYNCD_SNIPDIR="${RSYNCD_SNIPDIR:-/etc/rsyncd.d}";
+RSYNCD_ROOTDIR="${RSYNCD_ROOTDIR:-/storage}";
+RSYNCD_EXCLUDES="${RSYNCD_EXCLUDES:-$RSYNCD_CONFDIR/rsyncd-excludes.txt}";
+RSYNCD_PORT="${RSYNCD_PORT:-873}";
+RSYNCD_LOCKFILE="${RSYNCD_LOCKFILE:-/var/run/rsync.lock}";
+RSYNCD_LOGFILE="${RSYNCD_LOGFILE:-/dev/stdout}";
+RSYNCD_PIDFILE="${RSYNCD_PIDFILE:-/var/run/rsyncd.pid }";
+RSYNCD_SECRETS="${RSYNCD_SECRETS:-$RSYNCD_CONFDIR/rsyncd.secrets}";
+RSYNCD_USECHROOT="${RSYNCD_USECHROOT:-true}"; # requires RSYNCD_USER = root
+RSYNCD_TIMEOUT="${RSYNCD_TIMEOUT:-30}";
+# root user, runs process
+RSYNCD_USER="${RSYNCD_USER:-root}"; # must be a user existing in the system
+RSYNCD_GROUP="${RSYNCD_GROUP:-root}"; # must be a group existing in the system
+RSYNCD_USERPASS="${RSYNCD_USERPASS:-insecurebydefaultroot}";
+# non-root user
+RSYNC_USER="${RSYNC_USER:-user}";
+RSYNC_USERPASS="${RSYNC_USERPASS:-insecurebydefault}";
+
+vecho "Ensure configuration directories exist.";
+mkdir -p \
+    ${RSYNCD_CONFDIR} \
+    ${RSYNCD_SNIPDIR} \
+    ${RSYNCD_ROOTDIR} \
+    ;
+
+_subst () {
+    sed \
+        -e "s|RSYNCD_CONFDIR|${RSYNCD_CONFDIR}|g" \
+        -e "s|RSYNCD_SNIPDIR|${RSYNCD_SNIPDIR}|g" \
+        -e "s|RSYNCD_ROOTDIR|${RSYNCD_ROOTDIR}|g" \
+        -e "s|RSYNCD_EXCLUDES|${RSYNCD_EXCLUDES}|g" \
+        -e "s|RSYNCD_PORT|${RSYNCD_PORT}|g" \
+        -e "s|RSYNCD_LOCKFILE|${RSYNCD_LOCKFILE}|g" \
+        -e "s|RSYNCD_LOGFILE|${RSYNCD_LOGFILE}|g" \
+        -e "s|RSYNCD_PIDFILE|${RSYNCD_PIDFILE}|g" \
+        -e "s|RSYNCD_SECRETS|${RSYNCD_SECRETS}|g" \
+        -e "s|RSYNCD_USECHROOT|${RSYNCD_USECHROOT}|g" \
+        -e "s|RSYNCD_TIMEOUT|${RSYNCD_TIMEOUT}|g" \
+        -e "s|RSYNCD_USERPASS|${RSYNCD_USERPASS}|g" \
+        -e "s|RSYNCD_USER|${RSYNCD_USER}|g" \
+        -e "s|RSYNCD_GROUP|${RSYNCD_GROUP}|g" \
+        -e "s|RSYNC_USERPASS|${RSYNC_USERPASS}|g" \
+        -e "s|RSYNC_USER|${RSYNC_USER}|g" \
+        $1 > $2;
+}
+# make sure config/secret/excludes files exist
+if [ ! -f "${RSYNCD_CONFDIR}/rsyncd.conf" ];
+then
+    vecho "Setting up default Rsyncd configurations at $RSYNCD_CONFDIR/rsyncd.conf";
+    _subst /defaults/rsyncd.conf $RSYNCD_CONFDIR/rsyncd.conf;
+fi;
+if [ ! -f "${RSYNCD_EXCLUDES}" ];
+then
+    vecho "Copying sane rsyncd-excludes at ${RSYNCD_EXCLUDES}";
+    cp /defaults/rsyncd-excludes.txt ${RSYNCD_EXCLUDES};
+fi;
+if [ ! -f "${RSYNCD_SECRETS}" ];
+then
+    vecho "Setting up default (insecure) rsyncd-credentials at ${RSYNCD_SECRETS}";
+    _subst /defaults/rsyncd.secrets ${RSYNCD_SECRETS};
+fi;
+
+# fix permissions
+vecho "Fixing permissions.";
+chown ${RSYNCD_USER}:${RSYNCD_GROUP} \
+  ${RSYNCD_ROOTDIR} \
+  ${RSYNCD_CONFDIR} \
+  ${RSYNCD_CONFDIR}/rsyncd.conf \
+  ${RSYNCD_SNIPDIR} \
+  ${RSYNCD_EXCLUDES} \
+  ${RSYNCD_SECRETS} \
+  ;
+chmod 600 ${RSYNCD_SECRETS};
+
+# ensure paths referenced in rsyncd conf exist
+if [ "${RSYNCD_MAKEDIRS:-false}" = "true" ];
+then
+    for p in $(cat $RSYNCD_CONFDIR/rsyncd.conf $RSYNCD_SNIPDIR/*.conf 2>/dev/null \
+        | grep -Eo   '^path\s+=\s+(.*)' \
+        | sed  -Ee 's_^path\s+=\s+(.*)_\1_');
+    do
+        if [ ! -e "$p" ];
+        then
+            (mkdir -p $p \
+            && chown ${RSYNCD_USER}:${RSYNCD_GROUP} $p \
+            && vecho "RSync Directory created: $p") \
+            || vecho "Failed to create: $p";
+        else
+            vecho "RSync Directory exists: $p";
+        fi;
+    done;
+fi;
